@@ -718,12 +718,13 @@ JS;
             }
          }
 
-         $safe = str_replace("\\", "\\\\", $safe);
+         $renderText = str_replace(["\r", "\n"], " ", $safe);
+         $lineY = ($pageHeight - $topOffset) - ($i * $leading);
+         $textWidth = $this->estimate_pdf_text_width($renderText, $fontSize);
+
+         $safe = str_replace("\\", "\\\\", $renderText);
          $safe = str_replace("(", "\\(", $safe);
          $safe = str_replace(")", "\\)", $safe);
-         $safe = str_replace(["\r", "\n"], " ", $safe);
-         $lineY = ($pageHeight - $topOffset) - ($i * $leading);
-         $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
          $lineX = ($pageWidth - $textWidth) / 2;
          $lineX = max(20, min($pageWidth - 20, $lineX));
          $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
@@ -777,9 +778,37 @@ JS;
 
    private function estimate_pdf_text_width($text, $fontSize) {
       $text = (string)$text;
-      $length = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
-      $avgGlyphFactor = 0.52;
-      return $length * ((float)$fontSize * $avgGlyphFactor);
+      if ($text === '') return 0.0;
+
+      $fontSize = (float)$fontSize;
+      $units = 0;
+      $len = strlen($text);
+
+      for ($i = 0; $i < $len; $i++) {
+         $ch = $text[$i];
+         $ord = ord($ch);
+
+         // Larguras aproximadas de glifos para Helvetica (unidades 1/1000 em).
+         if ($ord === 32) {
+            $units += 278;
+         } elseif (strpos("ilI.,'`!:;|", $ch) !== false) {
+            $units += 278;
+         } elseif (strpos("fjrt()[]{}", $ch) !== false) {
+            $units += 333;
+         } elseif (strpos("mwMW@%&QGODHNU", $ch) !== false) {
+            $units += 778;
+         } elseif ($ord >= 48 && $ord <= 57) {
+            $units += 556;
+         } elseif ($ord >= 65 && $ord <= 90) {
+            $units += 667;
+         } elseif ($ord >= 97 && $ord <= 122) {
+            $units += 500;
+         } else {
+            $units += 500;
+         }
+      }
+
+      return ($units / 1000) * $fontSize;
    }
 
    private function parse_name_color_for_pdf($nameColor) {
