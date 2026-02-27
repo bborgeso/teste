@@ -615,29 +615,13 @@ JS;
       }
 
       $nome = isset($row['nome']) && $row['nome'] !== '' ? $row['nome'] : 'Participante';
-      $cpf_out = isset($row['cpf']) ? preg_replace('/\D+/', '', (string)$row['cpf']) : '';
 
-      $title = get_the_title($cert_id);
-
-      $lines = [
-         'CERTIFICADO',
-         '',
-         'Certificamos que:',
-         $nome,
-         '',
-         'E-mail: ' . $final_email,
-      ];
-
-      if ($cpf_out !== '') {
-         $lines[] = 'CPF: ' . $cpf_out;
-      }
-
-      $lines[] = '';
-      $lines[] = 'Referente ao certificado: ' . $title;
-      $lines[] = 'Emitido em: ' . date_i18n('d/m/Y H:i');
+      // Exibe somente o nome no PDF, conforme requisito.
+      $lines = [$nome];
 
       $filename = 'certificado-' . sanitize_file_name($final_email) . '.pdf';
-      $pdf = $this->build_simple_pdf($lines);
+      $background = $this->get_certificate_background_jpeg($cert_id);
+      $pdf = $this->build_simple_pdf($lines, $background);
 
       nocache_headers();
       header('Content-Type: application/pdf');
@@ -679,11 +663,18 @@ JS;
    /* =========================================================
     * PDF simples (sem libs externas)
     * ========================================================= */
-   private function build_simple_pdf(array $lines) {
-      $y = 760;
-      $leading = 18;
+   private function build_simple_pdf(array $lines, $background = null) {
+      $pageWidth = 842;
+      $pageHeight = 595;
+      $y = 470;
+      $leading = 24;
 
-      $content = "BT\n/F1 18 Tf\n72 $y Td\n";
+      $content = '';
+      if (is_array($background) && !empty($background['data'])) {
+         $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
+      }
+
+      $content .= "BT\n/F1 22 Tf\n72 $y Td\n";
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
          $content .= "($safe) Tj\n";
@@ -698,9 +689,24 @@ JS;
       $objs = [];
       $objs[] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
       $objs[] = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-      $objs[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n";
+
+      $resources = '<< /Font << /F1 4 0 R >>';
+      if (is_array($background) && !empty($background['data'])) {
+         $resources .= ' /XObject << /Im1 6 0 R >>';
+      }
+      $resources .= ' >>';
+
+      $objs[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources {$resources} /Contents 5 0 R >>\nendobj\n";
       $objs[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
       $objs[] = "5 0 obj\n<< /Length $len >>\nstream\n$content\nendstream\nendobj\n";
+
+      if (is_array($background) && !empty($background['data'])) {
+         $imgData = $background['data'];
+         $imgLen = strlen($imgData);
+         $imgW = max(1, (int)($background['width'] ?? 1));
+         $imgH = max(1, (int)($background['height'] ?? 1));
+         $objs[] = "6 0 obj\n<< /Type /XObject /Subtype /Image /Width {$imgW} /Height {$imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {$imgLen} >>\nstream\n{$imgData}\nendstream\nendobj\n";
+      }
 
       $pdf = "%PDF-1.4\n";
       $offsets = [0];
@@ -720,6 +726,92 @@ JS;
       $pdf .= "startxref\n$xref_pos\n%%EOF";
 
       return $pdf;
+   }
+
+   private function get_certificate_background_jpeg($cert_id) {
+      $raw = get_post_meta($cert_id, 'imagem_do_certificado', true);
+      if (!$raw) return null;
+
+      $bytes = $this->read_background_image_bytes($raw);
+      if (!is_string($bytes) || $bytes === '') return null;
+
+      $info = @getimagesizefromstring($bytes);
+      if (!is_array($info) || empty($info['mime'])) return null;
+
+      $mime = strtolower((string)$info['mime']);
+      if ($mime === 'image/jpeg') {
+         return [
+            'data' => $bytes,
+            'width' => (int)($info[0] ?? 1),
+            'height' => (int)($info[1] ?? 1),
+         ];
+      }
+
+      if (!function_exists('imagecreatefromstring') || !function_exists('imagejpeg')) {
+         return null;
+      }
+
+      $img = @imagecreatefromstring($bytes);
+      if (!$img) return null;
+
+      ob_start();
+      imagejpeg($img, null, 90);
+      $jpeg = (string)ob_get_clean();
+
+      $out = [
+         'data' => $jpeg,
+         'width' => imagesx($img),
+         'height' => imagesy($img),
+      ];
+      imagedestroy($img);
+
+      return $out;
+   }
+
+   private function read_background_image_bytes($value) {
+      $value = is_string($value) ? trim($value) : $value;
+      if ($value === '' || $value === null) return null;
+
+      if (is_numeric($value)) {
+         $path = get_attached_file((int)$value);
+         if ($path && is_readable($path)) {
+            $data = @file_get_contents($path);
+            if ($data !== false) return $data;
+         }
+      }
+
+      if (!is_string($value) || $value === '') return null;
+
+      if (filter_var($value, FILTER_VALIDATE_URL)) {
+         $attId = function_exists('attachment_url_to_postid') ? (int) attachment_url_to_postid($value) : 0;
+         if ($attId) {
+            $path = get_attached_file($attId);
+            if ($path && is_readable($path)) {
+               $data = @file_get_contents($path);
+               if ($data !== false) return $data;
+            }
+         }
+
+         if (function_exists('wp_remote_get')) {
+            $resp = wp_remote_get($value, ['timeout' => 10]);
+            if (!is_wp_error($resp) && (int)wp_remote_retrieve_response_code($resp) === 200) {
+               $body = wp_remote_retrieve_body($resp);
+               if (is_string($body) && $body !== '') return $body;
+            }
+         }
+
+         return null;
+      }
+
+      $paths = [$value, ABSPATH . ltrim($value, '/')];
+      foreach ($paths as $path) {
+         if ($path && is_readable($path)) {
+            $data = @file_get_contents($path);
+            if ($data !== false) return $data;
+         }
+      }
+
+      return null;
    }
 
    private function pdf_escape_text($text) {
@@ -769,7 +861,7 @@ JS;
 
       $headerNorm = array_map(function($h){
          $h = $this->to_utf8(trim((string)$h));
-         $h = mb_strtolower($h);
+         $h = $this->strtolower_safe($h);
          $h = preg_replace('/\s+/', ' ', $h);
          return $h;
       }, $header);
@@ -867,6 +959,14 @@ JS;
       if (!function_exists('mb_convert_encoding')) return $str;
       $converted = @mb_convert_encoding($str, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
       return $converted ?: $str;
+   }
+
+   private function strtolower_safe($str) {
+      if (function_exists('mb_strtolower')) {
+         return mb_strtolower((string)$str);
+      }
+
+      return strtolower((string)$str);
    }
 }
 
