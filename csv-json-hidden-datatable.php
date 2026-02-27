@@ -746,7 +746,7 @@ JS;
       $resources .= ' >>';
 
       $objs[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources {$resources} /Contents 5 0 R >>\nendobj\n";
-      $objs[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+      $objs[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
       $objs[] = "5 0 obj\n<< /Length $len >>\nstream\n$content\nendstream\nendobj\n";
 
       if (is_array($background) && !empty($background['data'])) {
@@ -1079,6 +1079,14 @@ JS;
       if ($text === '') return '';
 
       $replacements = [
+         // Dupla codificação comum (ex.: JoÃƒÂ£o)
+         'ÃƒÂ¡' => 'á', 'ÃƒÂ ' => 'à', 'ÃƒÂ¢' => 'â', 'ÃƒÂ£' => 'ã', 'ÃƒÂ¤' => 'ä',
+         'Ãƒâ€°' => 'É', 'ÃƒÂ©' => 'é', 'ÃƒÂ¨' => 'è', 'ÃƒÂª' => 'ê', 'ÃƒÂ«' => 'ë',
+         'ÃƒÂ­' => 'í', 'ÃƒÂ¬' => 'ì', 'ÃƒÂ®' => 'î', 'ÃƒÂ¯' => 'ï',
+         'Ãƒâ€œ' => 'Ó', 'ÃƒÂ³' => 'ó', 'ÃƒÂ²' => 'ò', 'ÃƒÂ´' => 'ô', 'ÃƒÂµ' => 'õ', 'ÃƒÂ¶' => 'ö',
+         'ÃƒÅ¡' => 'Ú', 'ÃƒÂº' => 'ú', 'ÃƒÂ¹' => 'ù', 'ÃƒÂ»' => 'û', 'ÃƒÂ¼' => 'ü',
+         'Ãƒâ€¡' => 'Ç', 'ÃƒÂ§' => 'ç', 'Ãƒâ€˜' => 'Ñ', 'ÃƒÂ±' => 'ñ',
+         // Codificação simples quebrada (ex.: JoÃ£o)
          'Ã¡' => 'á', 'Ã ' => 'à', 'Ã¢' => 'â', 'Ã£' => 'ã', 'Ã¤' => 'ä',
          'Ã‰' => 'É', 'Ã©' => 'é', 'Ã¨' => 'è', 'Ãª' => 'ê', 'Ã«' => 'ë',
          'Ã­' => 'í', 'Ã¬' => 'ì', 'Ã®' => 'î', 'Ã¯' => 'ï',
