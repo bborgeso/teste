@@ -622,7 +622,8 @@ JS;
       $filename = 'certificado-' . sanitize_file_name($final_email) . '.pdf';
       $background = $this->get_certificate_background_jpeg($cert_id);
       $nameHeightPx = get_post_meta($cert_id, 'altura_do_nome_no_certificado', true);
-      $pdf = $this->build_simple_pdf($lines, $background, $nameHeightPx);
+      $nameColor = get_post_meta($cert_id, 'cor_do_nome_no_certificado', true);
+      $pdf = $this->build_simple_pdf($lines, $background, $nameHeightPx, $nameColor);
 
       nocache_headers();
       header('Content-Type: application/pdf');
@@ -664,7 +665,7 @@ JS;
    /* =========================================================
     * PDF simples (sem libs externas)
     * ========================================================= */
-   private function build_simple_pdf(array $lines, $background = null, $nameHeightPx = null) {
+   private function build_simple_pdf(array $lines, $background = null, $nameHeightPx = null, $nameColor = null) {
       $pageWidth = 842;
       $pageHeight = 595;
       $fontSize = 22;
@@ -672,6 +673,7 @@ JS;
       $defaultTopOffset = 125;
       $topOffset = is_numeric($nameHeightPx) ? (float)$nameHeightPx : $defaultTopOffset;
       $topOffset = max(0, min($pageHeight, $topOffset));
+      $rgb = $this->parse_name_color_for_pdf($nameColor);
 
       $content = '';
       if (is_array($background) && !empty($background['data'])) {
@@ -681,6 +683,7 @@ JS;
       $horizontalCorrectionPx = $pageWidth * 0.05;
 
       $content .= "BT\n/F1 {$fontSize} Tf\n";
+      $content .= sprintf('%.4F %.4F %.4F rg' . "\n", $rgb[0], $rgb[1], $rgb[2]);
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
          $lineY = ($pageHeight - $topOffset) - ($i * $leading);
@@ -741,6 +744,41 @@ JS;
       $length = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
       $avgGlyphFactor = 0.52;
       return $length * ((float)$fontSize * $avgGlyphFactor);
+   }
+
+   private function parse_name_color_for_pdf($nameColor) {
+      $default = [0, 0, 0];
+      if (!is_string($nameColor)) return $default;
+
+      $nameColor = trim($nameColor);
+      if ($nameColor === '') return $default;
+
+      if (preg_match('/^#?([0-9a-fA-F]{6})$/', $nameColor, $m)) {
+         $hex = $m[1];
+         return [
+            hexdec(substr($hex, 0, 2)) / 255,
+            hexdec(substr($hex, 2, 2)) / 255,
+            hexdec(substr($hex, 4, 2)) / 255,
+         ];
+      }
+
+      if (preg_match('/^rgb\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i', $nameColor, $m)) {
+         return [
+            min(255, max(0, (int)$m[1])) / 255,
+            min(255, max(0, (int)$m[2])) / 255,
+            min(255, max(0, (int)$m[3])) / 255,
+         ];
+      }
+
+      if (preg_match('/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/', $nameColor, $m)) {
+         return [
+            min(255, max(0, (int)$m[1])) / 255,
+            min(255, max(0, (int)$m[2])) / 255,
+            min(255, max(0, (int)$m[3])) / 255,
+         ];
+      }
+
+      return $default;
    }
 
    private function get_certificate_background_jpeg($cert_id) {
@@ -830,13 +868,30 @@ JS;
    }
 
    private function pdf_escape_text($text) {
-      $text = (string)$text;
+      $text = $this->to_pdf_win_ansi($text);
       $text = str_replace("\\", "\\\\", $text);
       $text = str_replace("(", "\\(", $text);
       $text = str_replace(")", "\\)", $text);
       $text = str_replace(["\r", "\n"], " ", $text);
       return $text;
    }
+
+   private function to_pdf_win_ansi($text) {
+      $text = (string)$text;
+
+      if (function_exists('iconv')) {
+         $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $text);
+         if ($converted !== false) return $converted;
+      }
+
+      if (function_exists('mb_convert_encoding')) {
+         $converted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
+         if (is_string($converted) && $converted !== '') return $converted;
+      }
+
+      return $text;
+   }
+
 
    /* =========================================================
     * CSV parsing
