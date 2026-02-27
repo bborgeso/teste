@@ -622,7 +622,8 @@ JS;
       $filename = 'certificado-' . sanitize_file_name($final_email) . '.pdf';
       $background = $this->get_certificate_background_jpeg($cert_id);
       $nameHeightPx = get_post_meta($cert_id, 'altura_do_nome_no_certificado', true);
-      $pdf = $this->build_simple_pdf($lines, $background, $nameHeightPx);
+      $nameFontSizePx = get_post_meta($cert_id, 'tamanho_da_fonte_do_nome_no_certificado', true);
+      $pdf = $this->build_simple_pdf($lines, $background, $nameHeightPx, $nameFontSizePx);
 
       nocache_headers();
       header('Content-Type: application/pdf');
@@ -664,10 +665,12 @@ JS;
    /* =========================================================
     * PDF simples (sem libs externas)
     * ========================================================= */
-   private function build_simple_pdf(array $lines, $background = null, $nameHeightPx = null) {
+   private function build_simple_pdf(array $lines, $background = null, $nameHeightPx = null, $nameFontSizePx = null) {
       $pageWidth = 842;
       $pageHeight = 595;
-      $fontSize = 22;
+      $defaultFontSize = 22;
+      $fontSize = is_numeric($nameFontSizePx) ? (float)$nameFontSizePx : $defaultFontSize;
+      $fontSize = max(8, min(120, $fontSize));
       $leading = 24;
       $defaultTopOffset = 125;
       $topOffset = is_numeric($nameHeightPx) ? (float)$nameHeightPx : $defaultTopOffset;
