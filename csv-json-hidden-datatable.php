@@ -372,7 +372,7 @@ JS;
             $seen = [];
 
             foreach ($decoded as $r) {
-               $nome  = isset($r['nome'])  ? sanitize_text_field($r['nome']) : '';
+               $nome  = isset($r['nome'])  ? $this->normalize_person_text($r['nome']) : '';
                $email = isset($r['email']) ? sanitize_email($r['email']) : '';
                $cpf   = isset($r['cpf'])   ? preg_replace('/\D+/', '', (string)$r['cpf']) : '';
 
@@ -383,7 +383,7 @@ JS;
                $seen[$key] = true;
 
                $normalized[] = [
-                  'nome'  => $nome,
+                  'nome'  => $this->normalize_person_text($nome),
                   'email' => strtolower($email),
                   'cpf'   => $cpf ?: '',
                ];
@@ -636,8 +636,28 @@ JS;
    private function get_json_array($cert_id) {
       $json = get_post_meta($cert_id, self::META_KEY, true);
       if (!is_string($json) || $json === '') return [];
+
       $arr = json_decode($json, true);
-      return is_array($arr) ? $arr : [];
+      if (!is_array($arr)) return [];
+
+      $normalized = [];
+      foreach ($arr as $r) {
+         if (!is_array($r)) continue;
+
+         $nome = isset($r['nome']) ? $this->normalize_person_text($r['nome']) : '';
+         $email = isset($r['email']) ? strtolower(trim((string)$r['email'])) : '';
+         $cpf = isset($r['cpf']) ? preg_replace('/\D+/', '', (string)$r['cpf']) : '';
+
+         if (!$email || !is_email($email)) continue;
+
+         $normalized[] = [
+            'nome' => $nome,
+            'email' => $email,
+            'cpf' => $cpf ?: '',
+         ];
+      }
+
+      return $normalized;
    }
 
    private function find_row_by_email($cert_id, $email) {
@@ -680,15 +700,32 @@ JS;
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
-      $horizontalCorrectionPx = $pageWidth * 0.05;
-
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       $content .= sprintf('%.4F %.4F %.4F rg' . "\n", $rgb[0], $rgb[1], $rgb[2]);
       foreach ($lines as $i => $line) {
-         $safe = $this->pdf_escape_text($line);
+         $safe = $this->normalize_utf8_text($line);
+
+         // Helvetica Type1 no PDF simples suporta Win-1252.
+         if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $safe);
+            if ($converted !== false) {
+               $safe = $converted;
+            }
+         } elseif (function_exists('mb_convert_encoding')) {
+            $converted = @mb_convert_encoding($safe, 'Windows-1252', 'UTF-8');
+            if (is_string($converted) && $converted !== '') {
+               $safe = $converted;
+            }
+         }
+
+         $renderText = str_replace(["\r", "\n"], " ", $safe);
          $lineY = ($pageHeight - $topOffset) - ($i * $leading);
-         $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
-         $lineX = (($pageWidth - $textWidth) / 2) + $horizontalCorrectionPx;
+         $textWidth = $this->estimate_pdf_text_width($renderText, $fontSize);
+
+         $safe = str_replace("\\", "\\\\", $renderText);
+         $safe = str_replace("(", "\\(", $safe);
+         $safe = str_replace(")", "\\)", $safe);
+         $lineX = ($pageWidth - $textWidth) / 2;
          $lineX = max(20, min($pageWidth - 20, $lineX));
          $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
          $content .= "($safe) Tj\n";
@@ -708,7 +745,7 @@ JS;
       $resources .= ' >>';
 
       $objs[] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources {$resources} /Contents 5 0 R >>\nendobj\n";
-      $objs[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+      $objs[] = "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
       $objs[] = "5 0 obj\n<< /Length $len >>\nstream\n$content\nendstream\nendobj\n";
 
       if (is_array($background) && !empty($background['data'])) {
@@ -741,9 +778,37 @@ JS;
 
    private function estimate_pdf_text_width($text, $fontSize) {
       $text = (string)$text;
-      $length = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
-      $avgGlyphFactor = 0.52;
-      return $length * ((float)$fontSize * $avgGlyphFactor);
+      if ($text === '') return 0.0;
+
+      $fontSize = (float)$fontSize;
+      $units = 0;
+      $len = strlen($text);
+
+      for ($i = 0; $i < $len; $i++) {
+         $ch = $text[$i];
+         $ord = ord($ch);
+
+         // Larguras aproximadas de glifos para Helvetica (unidades 1/1000 em).
+         if ($ord === 32) {
+            $units += 278;
+         } elseif (strpos("ilI.,'`!:;|", $ch) !== false) {
+            $units += 278;
+         } elseif (strpos("fjrt()[]{}", $ch) !== false) {
+            $units += 333;
+         } elseif (strpos("mwMW@%&QGODHNU", $ch) !== false) {
+            $units += 778;
+         } elseif ($ord >= 48 && $ord <= 57) {
+            $units += 556;
+         } elseif ($ord >= 65 && $ord <= 90) {
+            $units += 667;
+         } elseif ($ord >= 97 && $ord <= 122) {
+            $units += 500;
+         } else {
+            $units += 500;
+         }
+      }
+
+      return ($units / 1000) * $fontSize;
    }
 
    private function parse_name_color_for_pdf($nameColor) {
@@ -866,30 +931,33 @@ JS;
 
       return null;
    }
+   private function normalize_utf8_text($text) {
+      $text = is_scalar($text) ? (string)$text : '';
 
-   private function pdf_escape_text($text) {
-      $text = $this->to_pdf_win_ansi($text);
-      $text = str_replace("\\", "\\\\", $text);
-      $text = str_replace("(", "\\(", $text);
-      $text = str_replace(")", "\\)", $text);
-      $text = str_replace(["\r", "\n"], " ", $text);
-      return $text;
-   }
+      if ($text === '') return '';
 
-   private function to_pdf_win_ansi($text) {
-      $text = (string)$text;
-
-      if (function_exists('iconv')) {
-         $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $text);
-         if ($converted !== false) return $converted;
+      // Se já for UTF-8 válido, apenas corrige possíveis sequências mojibake.
+      if (preg_match('//u', $text)) {
+         return $this->fix_common_mojibake($text);
       }
 
       if (function_exists('mb_convert_encoding')) {
-         $converted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
-         if (is_string($converted) && $converted !== '') return $converted;
+         $converted = @mb_convert_encoding($text, 'UTF-8', 'Windows-1252,ISO-8859-1');
+         if (is_string($converted) && $converted !== '') {
+            return $this->fix_common_mojibake($converted);
+         }
       }
 
-      return $text;
+      if (function_exists('iconv')) {
+         foreach (['Windows-1252', 'ISO-8859-1'] as $enc) {
+            $converted = @iconv($enc, 'UTF-8//IGNORE', $text);
+            if ($converted !== false && $converted !== '') {
+               return $this->fix_common_mojibake($converted);
+            }
+         }
+      }
+
+      return $this->fix_common_mojibake($text);
    }
 
 
@@ -1017,11 +1085,50 @@ JS;
       $cpf = preg_replace('/\D+/', '', (string)$cpf);
 
       return [
-         'nome'  => $nome,
+         'nome'  => $this->normalize_person_text($nome),
          'email' => $email,
          'cpf'   => $cpf ?: '',
       ];
    }
+
+   private function normalize_person_text($text) {
+      $text = is_scalar($text) ? trim((string)$text) : '';
+      if ($text === '') return '';
+
+      $text = $this->to_utf8($text);
+      $text = $this->fix_common_mojibake($text);
+
+      return sanitize_text_field($text);
+   }
+
+   private function fix_common_mojibake($text) {
+      $text = (string)$text;
+      if ($text === '') return '';
+
+      $replacements = [
+         // Dupla codificação comum (ex.: JoÃƒÂ£o)
+         'ÃƒÂ¡' => 'á', 'ÃƒÂ ' => 'à', 'ÃƒÂ¢' => 'â', 'ÃƒÂ£' => 'ã', 'ÃƒÂ¤' => 'ä',
+         'Ãƒâ€°' => 'É', 'ÃƒÂ©' => 'é', 'ÃƒÂ¨' => 'è', 'ÃƒÂª' => 'ê', 'ÃƒÂ«' => 'ë',
+         'ÃƒÂ­' => 'í', 'ÃƒÂ¬' => 'ì', 'ÃƒÂ®' => 'î', 'ÃƒÂ¯' => 'ï',
+         'Ãƒâ€œ' => 'Ó', 'ÃƒÂ³' => 'ó', 'ÃƒÂ²' => 'ò', 'ÃƒÂ´' => 'ô', 'ÃƒÂµ' => 'õ', 'ÃƒÂ¶' => 'ö',
+         'ÃƒÅ¡' => 'Ú', 'ÃƒÂº' => 'ú', 'ÃƒÂ¹' => 'ù', 'ÃƒÂ»' => 'û', 'ÃƒÂ¼' => 'ü',
+         'Ãƒâ€¡' => 'Ç', 'ÃƒÂ§' => 'ç', 'Ãƒâ€˜' => 'Ñ', 'ÃƒÂ±' => 'ñ',
+         // Codificação simples quebrada (ex.: JoÃ£o)
+         'Ã¡' => 'á', 'Ã ' => 'à', 'Ã¢' => 'â', 'Ã£' => 'ã', 'Ã¤' => 'ä',
+         'Ã‰' => 'É', 'Ã©' => 'é', 'Ã¨' => 'è', 'Ãª' => 'ê', 'Ã«' => 'ë',
+         'Ã­' => 'í', 'Ã¬' => 'ì', 'Ã®' => 'î', 'Ã¯' => 'ï',
+         'Ã“' => 'Ó', 'Ã³' => 'ó', 'Ã²' => 'ò', 'Ã´' => 'ô', 'Ãµ' => 'õ', 'Ã¶' => 'ö',
+         'Ãš' => 'Ú', 'Ãº' => 'ú', 'Ã¹' => 'ù', 'Ã»' => 'û', 'Ã¼' => 'ü',
+         'Ã‡' => 'Ç', 'Ã§' => 'ç', 'Ã‘' => 'Ñ', 'Ã±' => 'ñ',
+         'â€“' => '–', 'â€”' => '—', 'â€˜' => '‘', 'â€™' => '’', 'â€œ' => '“', 'â€' => '”',
+      ];
+
+      $text = strtr($text, $replacements);
+      $text = str_replace('Â', '', $text);
+
+      return $text;
+   }
+
    private function to_utf8($str) {
       if ($str === '') return $str;
       if (function_exists('seems_utf8') && seems_utf8($str)) return $str;
