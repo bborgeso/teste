@@ -1,63 +1,65 @@
-# Revisão rápida da base e tarefas sugeridas
+# Revisão das tarefas (revalidação)
 
-## 1) Tarefa de correção de erro de digitação (HTML)
-**Problema encontrado:** a tag de stylesheet em `index.html` tem o atributo `rel` repetido, o que indica erro de digitação/edição (`... type="text/css"` e novamente `rel="stylesheet"`).
+Este documento reavalia as 4 tarefas originalmente propostas e verifica se cada uma foi de fato ajustada no estado atual da base.
 
-**Onde:** `index.html` (head, linha do Bootstrap).
+## Resultado rápido
 
-**Tarefa sugerida:**
-- Corrigir a tag `<link>` removendo o atributo duplicado e padronizando a ordem dos atributos.
-
-**Critério de aceite:**
-- O arquivo fica com apenas um `rel="stylesheet"` por tag `<link>`.
-- O HTML passa em um validador sem apontar atributo duplicado nessa linha.
+- ✅ **Tarefa 1 (erro de digitação em HTML): ajustada**.
+- ✅ **Tarefa 2 (bug sem `mbstring`): ajustada**.
+- ⚠️ **Tarefa 3 (comentário/documentação vs comportamento): parcialmente ajustada / pendente de alinhamento definitivo**.
+- ❌ **Tarefa 4 (melhoria de testes): não ajustada**.
 
 ---
 
-## 2) Tarefa de correção de bug (robustez em ambiente sem mbstring)
-**Problema encontrado:** `mb_strtolower()` é chamado sem verificar se a extensão `mbstring` está disponível.
+## 1) Erro de digitação (HTML)
 
-**Onde:** `csv-json-hidden-datatable.php`, normalização de cabeçalho no `parse_csv()`.
+**Status:** ✅ Ajustada.
 
-**Risco:** em instalações WordPress sem `mbstring`, o upload/parsing de CSV pode gerar erro fatal.
-
-**Tarefa sugerida:**
-- Substituir o uso direto de `mb_strtolower()` por fallback seguro (`mb_strtolower` quando existir, senão `strtolower`).
-
-**Critério de aceite:**
-- O parsing continua funcionando com e sem `mbstring` habilitado.
-- Não ocorre erro fatal ao importar CSV em ambiente sem `mbstring`.
+**Validação:**
+- O arquivo `index.html` que continha o ponto de erro foi removido do repositório.
+- Com isso, a inconsistência de atributo duplicado deixou de existir na base atual.
 
 ---
 
-## 3) Tarefa de ajuste de comentário/documentação (alinhar comportamento real)
-**Problema encontrado:** o texto da UI diz que, se o e-mail já existir, os dados serão atualizados, mas no `save_post()` a deduplicação mantém a primeira ocorrência e ignora as seguintes.
+## 2) Bug de robustez sem `mbstring`
 
-**Onde:**
-- Texto da interface no metabox: `render_metabox()`.
-- Regra de deduplicação no `save_post()`.
+**Status:** ✅ Ajustada.
 
-**Tarefa sugerida (escolher uma abordagem):**
-1. **Ajustar documentação/comentário** para refletir claramente que, no salvamento, a primeira ocorrência vence; **ou**
-2. **Ajustar código** para “última ocorrência vence” e manter coerência com a promessa de atualização.
-
-**Critério de aceite:**
-- Texto exibido ao usuário e comportamento final no banco ficam consistentes.
-- Caso o código seja alterado, incluir teste cobrindo duplicidade por e-mail.
+**Validação:**
+- A normalização de cabeçalhos do CSV passou a usar `strtolower_safe()` no `parse_csv()`.
+- O helper `strtolower_safe()` aplica fallback para `strtolower()` quando `mb_strtolower()` não está disponível.
+- Isso elimina o risco de erro fatal em ambientes sem `mbstring`.
 
 ---
 
-## 4) Tarefa para melhorar teste
-**Problema encontrado:** não há cobertura automatizada para cenários críticos de parsing e busca.
+## 3) Alinhamento comentário/documentação vs comportamento real
 
-**Tarefa sugerida:**
-- Criar testes unitários para:
-  - detecção de delimitador (`,`, `;`, `\t`),
+**Status:** ⚠️ Parcial / pendente.
+
+**Validação:**
+- A UI informa: *se o e-mail já existir, os dados serão atualizados*.
+- No `save_post()`, a deduplicação ainda segue padrão **primeira ocorrência vence** (`if (isset($seen[$key])) continue;`).
+- No fluxo normal da interface (JS), a mesclagem já tende a manter uma única ocorrência por e-mail com atualização, então o comportamento final costuma funcionar como “atualiza”.
+- Porém, no backend, a regra explícita permanece diferente da promessa textual caso cheguem dados duplicados ao salvamento.
+
+**Ajuste recomendado para concluir a tarefa:**
+- Escolher e padronizar uma única regra em todos os pontos (UI + backend):
+  - ou alterar o texto para “primeira ocorrência vence”;
+  - ou alterar o `save_post()` para “última ocorrência vence”.
+
+---
+
+## 4) Melhoria de testes
+
+**Status:** ❌ Não ajustada.
+
+**Validação:**
+- Não foram encontrados testes automatizados cobrindo os cenários críticos sugeridos:
+  - detecção de delimitador,
   - CSV com/sem cabeçalho,
   - deduplicação por e-mail,
-  - busca por CPF com e sem pontuação,
-  - comportamento quando `mbstring` não está disponível.
+  - busca por CPF com/sem pontuação,
+  - fallback sem `mbstring`.
 
-**Critério de aceite:**
-- Suite de testes automatizada executa localmente e valida os cenários acima.
-- Pelo menos um teste de regressão para cada bug/documentação ajustada nos itens 2 e 3.
+**Próximo passo recomendado:**
+- Criar suite mínima de testes unitários para esses cenários e incluir ao menos regressão para os itens 2 e 3.
