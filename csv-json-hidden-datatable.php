@@ -866,13 +866,51 @@ JS;
 
       return null;
    }
-
    private function pdf_escape_text($text) {
-      $text = (string)$text;
+      $text = $this->normalize_utf8_text($text);
+
+      // Helvetica Type1 no PDF simples suporta Win-1252.
+      if (function_exists('iconv')) {
+         $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $text);
+         if ($converted !== false) {
+            $text = $converted;
+         }
+      } elseif (function_exists('mb_convert_encoding')) {
+         $converted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
+         if (is_string($converted) && $converted !== '') {
+            $text = $converted;
+         }
+      }
+
       $text = str_replace("\\", "\\\\", $text);
       $text = str_replace("(", "\\(", $text);
       $text = str_replace(")", "\\)", $text);
       $text = str_replace(["\r", "\n"], " ", $text);
+      return $text;
+   }
+
+   private function normalize_utf8_text($text) {
+      $text = is_scalar($text) ? (string)$text : '';
+
+      if ($text === '') return '';
+
+      if (function_exists('mb_detect_encoding')) {
+         $enc = @mb_detect_encoding($text, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true);
+         if ($enc && $enc !== 'UTF-8') {
+            if (function_exists('mb_convert_encoding')) {
+               $converted = @mb_convert_encoding($text, 'UTF-8', $enc);
+               if (is_string($converted) && $converted !== '') {
+                  $text = $converted;
+               }
+            } elseif (function_exists('iconv')) {
+               $converted = @iconv($enc, 'UTF-8//IGNORE', $text);
+               if ($converted !== false) {
+                  $text = $converted;
+               }
+            }
+         }
+      }
+
       return $text;
    }
 
