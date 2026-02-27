@@ -700,8 +700,6 @@ JS;
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
-      $horizontalCorrectionPx = $pageWidth * 0.05;
-
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       $content .= sprintf('%.4F %.4F %.4F rg' . "\n", $rgb[0], $rgb[1], $rgb[2]);
       foreach ($lines as $i => $line) {
@@ -726,7 +724,7 @@ JS;
          $safe = str_replace(["\r", "\n"], " ", $safe);
          $lineY = ($pageHeight - $topOffset) - ($i * $leading);
          $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
-         $lineX = (($pageWidth - $textWidth) / 2) + $horizontalCorrectionPx;
+         $lineX = ($pageWidth - $textWidth) / 2;
          $lineX = max(20, min($pageWidth - 20, $lineX));
          $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
          $content .= "($safe) Tj\n";
