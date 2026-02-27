@@ -678,7 +678,7 @@ JS;
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
-      $horizontalCorrectionPx = $pageWidth * 0.03;
+      $horizontalCorrectionPx = $pageWidth * 0.05;
 
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       foreach ($lines as $i => $line) {
