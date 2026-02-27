@@ -1022,7 +1022,6 @@ JS;
          'cpf'   => $cpf ?: '',
       ];
    }
-
    private function to_utf8($str) {
       if ($str === '') return $str;
       if (function_exists('seems_utf8') && seems_utf8($str)) return $str;
