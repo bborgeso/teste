@@ -669,21 +669,21 @@ JS;
       $pageHeight = 595;
       $fontSize = 22;
       $leading = 24;
-      $defaultY = 470;
-      $baseY = is_numeric($nameHeightPx) ? (float)$nameHeightPx : $defaultY;
-      $baseY = max(0, min($pageHeight, $baseY));
+      $defaultTopOffset = 125;
+      $topOffset = is_numeric($nameHeightPx) ? (float)$nameHeightPx : $defaultTopOffset;
+      $topOffset = max(0, min($pageHeight, $topOffset));
 
       $content = '';
       if (is_array($background) && !empty($background['data'])) {
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
-      $horizontalCorrectionPx = $pageWidth * 0.06;
+      $horizontalCorrectionPx = $pageWidth * 0.03;
 
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
-         $lineY = $baseY - ($i * $leading);
+         $lineY = ($pageHeight - $topOffset) - ($i * $leading);
          $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
          $lineX = (($pageWidth - $textWidth) / 2) + $horizontalCorrectionPx;
          $lineX = max(20, min($pageWidth - 20, $lineX));
