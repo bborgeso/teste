@@ -372,7 +372,7 @@ JS;
             $seen = [];
 
             foreach ($decoded as $r) {
-               $nome  = isset($r['nome'])  ? sanitize_text_field($r['nome']) : '';
+               $nome  = isset($r['nome'])  ? $this->sanitize_nome($r['nome']) : '';
                $email = isset($r['email']) ? sanitize_email($r['email']) : '';
                $cpf   = isset($r['cpf'])   ? preg_replace('/\D+/', '', (string)$r['cpf']) : '';
 
@@ -1017,10 +1017,24 @@ JS;
       $cpf = preg_replace('/\D+/', '', (string)$cpf);
 
       return [
-         'nome'  => $nome,
+         'nome'  => $this->sanitize_nome($nome),
          'email' => $email,
          'cpf'   => $cpf ?: '',
       ];
+   }
+
+   private function sanitize_nome($nome) {
+      $nome = (string) $nome;
+      $nome = $this->to_utf8($nome);
+
+      if (function_exists('wp_check_invalid_utf8')) {
+         $nome = wp_check_invalid_utf8($nome, true);
+      }
+
+      // Remove caracteres de controle, preservando letras com acento (pt-BR).
+      $nome = preg_replace('/[\x00-\x1F\x7F]/u', '', $nome);
+
+      return trim(wp_strip_all_tags($nome));
    }
 
    private function to_utf8($str) {
