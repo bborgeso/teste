@@ -868,27 +868,11 @@ JS;
    }
 
    private function pdf_escape_text($text) {
-      $text = $this->to_pdf_win_ansi($text);
+      $text = (string)$text;
       $text = str_replace("\\", "\\\\", $text);
       $text = str_replace("(", "\\(", $text);
       $text = str_replace(")", "\\)", $text);
       $text = str_replace(["\r", "\n"], " ", $text);
-      return $text;
-   }
-
-   private function to_pdf_win_ansi($text) {
-      $text = (string)$text;
-
-      if (function_exists('iconv')) {
-         $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $text);
-         if ($converted !== false) return $converted;
-      }
-
-      if (function_exists('mb_convert_encoding')) {
-         $converted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
-         if (is_string($converted) && $converted !== '') return $converted;
-      }
-
       return $text;
    }
 
