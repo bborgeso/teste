@@ -678,12 +678,15 @@ JS;
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
+      $horizontalCorrectionPx = $pageWidth * 0.06;
+
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
          $lineY = $baseY - ($i * $leading);
          $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
-         $lineX = max(20, ($pageWidth - $textWidth) / 2);
+         $lineX = (($pageWidth - $textWidth) / 2) + $horizontalCorrectionPx;
+         $lineX = max(20, min($pageWidth - 20, $lineX));
          $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
          $content .= "($safe) Tj\n";
       }
