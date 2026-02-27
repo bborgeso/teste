@@ -621,7 +621,8 @@ JS;
 
       $filename = 'certificado-' . sanitize_file_name($final_email) . '.pdf';
       $background = $this->get_certificate_background_jpeg($cert_id);
-      $pdf = $this->build_simple_pdf($lines, $background);
+      $nameHeightPx = get_post_meta($cert_id, 'altura_do_nome_no_certificado', true);
+      $pdf = $this->build_simple_pdf($lines, $background, $nameHeightPx);
 
       nocache_headers();
       header('Content-Type: application/pdf');
@@ -663,14 +664,14 @@ JS;
    /* =========================================================
     * PDF simples (sem libs externas)
     * ========================================================= */
-   private function build_simple_pdf(array $lines, $background = null) {
+   private function build_simple_pdf(array $lines, $background = null, $nameHeightPx = null) {
       $pageWidth = 842;
       $pageHeight = 595;
       $fontSize = 22;
       $leading = 24;
-      $lineCount = max(1, count($lines));
-      $blockHeight = ($lineCount - 1) * $leading;
-      $startY = ($pageHeight / 2) + ($blockHeight / 2);
+      $defaultY = 470;
+      $baseY = is_numeric($nameHeightPx) ? (float)$nameHeightPx : $defaultY;
+      $baseY = max(0, min($pageHeight, $baseY));
 
       $content = '';
       if (is_array($background) && !empty($background['data'])) {
@@ -680,7 +681,7 @@ JS;
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
-         $lineY = $startY - ($i * $leading);
+         $lineY = $baseY - ($i * $leading);
          $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
          $lineX = max(20, ($pageWidth - $textWidth) / 2);
          $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
