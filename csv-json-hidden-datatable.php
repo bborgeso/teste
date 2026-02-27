@@ -372,7 +372,7 @@ JS;
             $seen = [];
 
             foreach ($decoded as $r) {
-               $nome  = isset($r['nome'])  ? sanitize_text_field($r['nome']) : '';
+               $nome  = isset($r['nome'])  ? $this->normalize_person_text($r['nome']) : '';
                $email = isset($r['email']) ? sanitize_email($r['email']) : '';
                $cpf   = isset($r['cpf'])   ? preg_replace('/\D+/', '', (string)$r['cpf']) : '';
 
@@ -383,7 +383,7 @@ JS;
                $seen[$key] = true;
 
                $normalized[] = [
-                  'nome'  => $nome,
+                  'nome'  => $this->normalize_person_text($nome),
                   'email' => strtolower($email),
                   'cpf'   => $cpf ?: '',
                ];
@@ -636,8 +636,28 @@ JS;
    private function get_json_array($cert_id) {
       $json = get_post_meta($cert_id, self::META_KEY, true);
       if (!is_string($json) || $json === '') return [];
+
       $arr = json_decode($json, true);
-      return is_array($arr) ? $arr : [];
+      if (!is_array($arr)) return [];
+
+      $normalized = [];
+      foreach ($arr as $r) {
+         if (!is_array($r)) continue;
+
+         $nome = isset($r['nome']) ? $this->normalize_person_text($r['nome']) : '';
+         $email = isset($r['email']) ? strtolower(trim((string)$r['email'])) : '';
+         $cpf = isset($r['cpf']) ? preg_replace('/\D+/', '', (string)$r['cpf']) : '';
+
+         if (!$email || !is_email($email)) continue;
+
+         $normalized[] = [
+            'nome' => $nome,
+            'email' => $email,
+            'cpf' => $cpf ?: '',
+         ];
+      }
+
+      return $normalized;
    }
 
    private function find_row_by_email($cert_id, $email) {
@@ -889,15 +909,15 @@ JS;
 
       if ($text === '') return '';
 
-      // Se já for UTF-8 válido, mantém (evita mojibake como JoÃ£o).
+      // Se já for UTF-8 válido, apenas corrige possíveis sequências mojibake.
       if (preg_match('//u', $text)) {
-         return $text;
+         return $this->fix_common_mojibake($text);
       }
 
       if (function_exists('mb_convert_encoding')) {
          $converted = @mb_convert_encoding($text, 'UTF-8', 'Windows-1252,ISO-8859-1');
          if (is_string($converted) && $converted !== '') {
-            return $converted;
+            return $this->fix_common_mojibake($converted);
          }
       }
 
@@ -905,12 +925,12 @@ JS;
          foreach (['Windows-1252', 'ISO-8859-1'] as $enc) {
             $converted = @iconv($enc, 'UTF-8//IGNORE', $text);
             if ($converted !== false && $converted !== '') {
-               return $converted;
+               return $this->fix_common_mojibake($converted);
             }
          }
       }
 
-      return $text;
+      return $this->fix_common_mojibake($text);
    }
 
 
@@ -1038,11 +1058,42 @@ JS;
       $cpf = preg_replace('/\D+/', '', (string)$cpf);
 
       return [
-         'nome'  => $nome,
+         'nome'  => $this->normalize_person_text($nome),
          'email' => $email,
          'cpf'   => $cpf ?: '',
       ];
    }
+
+   private function normalize_person_text($text) {
+      $text = is_scalar($text) ? trim((string)$text) : '';
+      if ($text === '') return '';
+
+      $text = $this->to_utf8($text);
+      $text = $this->fix_common_mojibake($text);
+
+      return sanitize_text_field($text);
+   }
+
+   private function fix_common_mojibake($text) {
+      $text = (string)$text;
+      if ($text === '') return '';
+
+      $replacements = [
+         'Ã¡' => 'á', 'Ã ' => 'à', 'Ã¢' => 'â', 'Ã£' => 'ã', 'Ã¤' => 'ä',
+         'Ã‰' => 'É', 'Ã©' => 'é', 'Ã¨' => 'è', 'Ãª' => 'ê', 'Ã«' => 'ë',
+         'Ã­' => 'í', 'Ã¬' => 'ì', 'Ã®' => 'î', 'Ã¯' => 'ï',
+         'Ã“' => 'Ó', 'Ã³' => 'ó', 'Ã²' => 'ò', 'Ã´' => 'ô', 'Ãµ' => 'õ', 'Ã¶' => 'ö',
+         'Ãš' => 'Ú', 'Ãº' => 'ú', 'Ã¹' => 'ù', 'Ã»' => 'û', 'Ã¼' => 'ü',
+         'Ã‡' => 'Ç', 'Ã§' => 'ç', 'Ã‘' => 'Ñ', 'Ã±' => 'ñ',
+         'â€“' => '–', 'â€”' => '—', 'â€˜' => '‘', 'â€™' => '’', 'â€œ' => '“', 'â€' => '”',
+      ];
+
+      $text = strtr($text, $replacements);
+      $text = str_replace('Â', '', $text);
+
+      return $text;
+   }
+
    private function to_utf8($str) {
       if ($str === '') return $str;
       if (function_exists('seems_utf8') && seems_utf8($str)) return $str;
