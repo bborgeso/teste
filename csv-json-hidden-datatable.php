@@ -685,7 +685,25 @@ JS;
       $content .= "BT\n/F1 {$fontSize} Tf\n";
       $content .= sprintf('%.4F %.4F %.4F rg' . "\n", $rgb[0], $rgb[1], $rgb[2]);
       foreach ($lines as $i => $line) {
-         $safe = $this->pdf_escape_text($line);
+         $safe = $this->normalize_utf8_text($line);
+
+         // Helvetica Type1 no PDF simples suporta Win-1252.
+         if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $safe);
+            if ($converted !== false) {
+               $safe = $converted;
+            }
+         } elseif (function_exists('mb_convert_encoding')) {
+            $converted = @mb_convert_encoding($safe, 'Windows-1252', 'UTF-8');
+            if (is_string($converted) && $converted !== '') {
+               $safe = $converted;
+            }
+         }
+
+         $safe = str_replace("\\", "\\\\", $safe);
+         $safe = str_replace("(", "\\(", $safe);
+         $safe = str_replace(")", "\\)", $safe);
+         $safe = str_replace(["\r", "\n"], " ", $safe);
          $lineY = ($pageHeight - $topOffset) - ($i * $leading);
          $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
          $lineX = (($pageWidth - $textWidth) / 2) + $horizontalCorrectionPx;
@@ -866,29 +884,6 @@ JS;
 
       return null;
    }
-   private function pdf_escape_text($text) {
-      $text = $this->normalize_utf8_text($text);
-
-      // Helvetica Type1 no PDF simples suporta Win-1252.
-      if (function_exists('iconv')) {
-         $converted = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $text);
-         if ($converted !== false) {
-            $text = $converted;
-         }
-      } elseif (function_exists('mb_convert_encoding')) {
-         $converted = @mb_convert_encoding($text, 'Windows-1252', 'UTF-8');
-         if (is_string($converted) && $converted !== '') {
-            $text = $converted;
-         }
-      }
-
-      $text = str_replace("\\", "\\\\", $text);
-      $text = str_replace("(", "\\(", $text);
-      $text = str_replace(")", "\\)", $text);
-      $text = str_replace(["\r", "\n"], " ", $text);
-      return $text;
-   }
-
    private function normalize_utf8_text($text) {
       $text = is_scalar($text) ? (string)$text : '';
 
