@@ -666,21 +666,25 @@ JS;
    private function build_simple_pdf(array $lines, $background = null) {
       $pageWidth = 842;
       $pageHeight = 595;
-      $y = 470;
+      $fontSize = 22;
       $leading = 24;
+      $lineCount = max(1, count($lines));
+      $blockHeight = ($lineCount - 1) * $leading;
+      $startY = ($pageHeight / 2) + ($blockHeight / 2);
 
       $content = '';
       if (is_array($background) && !empty($background['data'])) {
          $content .= "q\n{$pageWidth} 0 0 {$pageHeight} 0 0 cm\n/Im1 Do\nQ\n";
       }
 
-      $content .= "BT\n/F1 22 Tf\n72 $y Td\n";
+      $content .= "BT\n/F1 {$fontSize} Tf\n";
       foreach ($lines as $i => $line) {
          $safe = $this->pdf_escape_text($line);
+         $lineY = $startY - ($i * $leading);
+         $textWidth = $this->estimate_pdf_text_width($line, $fontSize);
+         $lineX = max(20, ($pageWidth - $textWidth) / 2);
+         $content .= "1 0 0 1 " . round($lineX, 2) . " " . round($lineY, 2) . " Tm\n";
          $content .= "($safe) Tj\n";
-         if ($i < count($lines) - 1) {
-            $content .= "0 -" . $leading . " Td\n";
-         }
       }
       $content .= "ET\n";
 
@@ -726,6 +730,13 @@ JS;
       $pdf .= "startxref\n$xref_pos\n%%EOF";
 
       return $pdf;
+   }
+
+   private function estimate_pdf_text_width($text, $fontSize) {
+      $text = (string)$text;
+      $length = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
+      $avgGlyphFactor = 0.52;
+      return $length * ((float)$fontSize * $avgGlyphFactor);
    }
 
    private function get_certificate_background_jpeg($cert_id) {
