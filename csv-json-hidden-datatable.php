@@ -889,19 +889,23 @@ JS;
 
       if ($text === '') return '';
 
-      if (function_exists('mb_detect_encoding')) {
-         $enc = @mb_detect_encoding($text, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true);
-         if ($enc && $enc !== 'UTF-8') {
-            if (function_exists('mb_convert_encoding')) {
-               $converted = @mb_convert_encoding($text, 'UTF-8', $enc);
-               if (is_string($converted) && $converted !== '') {
-                  $text = $converted;
-               }
-            } elseif (function_exists('iconv')) {
-               $converted = @iconv($enc, 'UTF-8//IGNORE', $text);
-               if ($converted !== false) {
-                  $text = $converted;
-               }
+      // Se já for UTF-8 válido, mantém (evita mojibake como JoÃ£o).
+      if (preg_match('//u', $text)) {
+         return $text;
+      }
+
+      if (function_exists('mb_convert_encoding')) {
+         $converted = @mb_convert_encoding($text, 'UTF-8', 'Windows-1252,ISO-8859-1');
+         if (is_string($converted) && $converted !== '') {
+            return $converted;
+         }
+      }
+
+      if (function_exists('iconv')) {
+         foreach (['Windows-1252', 'ISO-8859-1'] as $enc) {
+            $converted = @iconv($enc, 'UTF-8//IGNORE', $text);
+            if ($converted !== false && $converted !== '') {
+               return $converted;
             }
          }
       }
